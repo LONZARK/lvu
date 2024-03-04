@@ -98,24 +98,31 @@ def proj(x):
 
 class VideoDataset(Dataset):
     def __init__(self, args, evaluate):
+        # Initialization method for the VideoDataset class.
+        # `args` contains configuration like file paths and settings for dataset preparation.
+        # `evaluate` is a boolean indicating if the dataset is for evaluation (True) or training (False).
 
-        self.evaluate = evaluate
-        self.secs_per_example = args.secs_per_example
+        self.evaluate = evaluate # Store the evaluate flag
+        self.secs_per_example = args.secs_per_example # Duration of each video example in seconds.
 
-
+        # Load video features from specified file paths based on the mode (evaluation or training).
         self.all_features = video_data_helper.load_features(
             args.eval_feature_file if evaluate else args.train_feature_file,
             args,
         )
 
+        # Conditional loading of video data based on the mode and specific task (action recognition, long-term training).
         if args.action_recognition:
+            # For action recognition tasks, load video data accordingly.
             self.videos = video_data_helper.load_video_data(
                 args.eval_data_file if evaluate else args.train_data_file,
                 args,
             )
         elif args.train_long_term:
+            # For long-term training, load multiple components of the dataset.
             self.videos, self.val_set, self.test_set = video_data_helper.load_mc_video_data(args, evaluate)
         else:
+            # Fallback loading behavior.
             if evaluate:
                 self.videos = video_data_helper.load_video_data(
                     args.eval_data_file if evaluate else args.train_data_file,
@@ -123,12 +130,14 @@ class VideoDataset(Dataset):
                 )
             else:
                 self.videos, self.val_set, self.test_set = video_data_helper.load_mc_video_data(args, evaluate)
-        self.args = args
+        self.args = args  # Store the arguments.
 
-        self.spans = []
+        self.spans = []  # Initialize an empty list to store spans of video data.
         if args.action_recognition:
+            # If the task is action recognition, prepare spans based on video keys.
             for video_name in self.videos.keys():
                 v = self.videos[video_name]
+                # Loop through a fixed time range, creating spans for action recognition.
                 # for action recognition only, both train and test use 15 min only.
                 for center_sec in range(EVAL_START_SEC, EVAL_END_SEC):
                     if sum(
@@ -138,21 +147,24 @@ class VideoDataset(Dataset):
                             ]) > 0:
                         self.spans.append((video_name, center_sec, None))
             if evaluate:
+                # If evaluating, increase the number of spans by a specified multiplier.
                 self.spans = self.spans * args.eval_sample_x
 
         if args.same_movie:
-            self.spans = {}
+            self.spans = {} # If focusing on the same movie, initialize spans as a dictionary.
         for video_name in self.videos.keys():
 
 
             v = self.videos[video_name]
 
             if args.same_movie:
-                positive_id = video_name
+                positive_id = video_name # For same-movie tasks, use the video name as a positive identifier.
 
             # complete spans
+            # Calculate the start and end range for video spans based on the video data keys.
             range_start = min(v.keys()) + self.secs_per_example - 1
             range_end = max(v.keys()) + 1
+            # Set the gap between spans differently based on the task and evaluation mode.
             gap = 60 if (self.evaluate and not args.is_end_task) else 1
 
             found_long_span = False
@@ -163,16 +175,20 @@ class VideoDataset(Dataset):
                                           tail_sec + 1)
                         ]) > 0:
                     if args.same_movie:
+                        # For same-movie tasks, organize spans by positive identifier.
                         if positive_id not in self.spans:
                             self.spans[positive_id] = []
                         self.spans[positive_id].append((video_name, None, tail_sec))
                     else:
+                        # Otherwise, append spans to the list.
                         self.spans.append((video_name, None, tail_sec))
                         found_long_span = True
             if not found_long_span and args.train_long_term:
+                # If no long span was found during long-term training, add a default span.
                 self.spans.append((video_name, None, range_end - 1))
 
-        self.force_len = None
+        self.force_len = None # Placeholder for potential forced length attribute.
+        # Print the number of unique videos and total video data loaded for confirmation.
         print(len(set([x[0] for x in self.spans])), 'videos in spans in total')
         print(len(self.videos), 'video data loaded in total')
 
